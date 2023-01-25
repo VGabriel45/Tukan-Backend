@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nestjs-k8s-3001
+spec: 
+  selector: 
+    app: nestjs-k8s
+  ports:
+    - protocol: TCP
+      port: 3001
+  type: LoadBalancer
+
