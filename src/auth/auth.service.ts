@@ -1,22 +1,25 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { sign, verify } from 'jsonwebtoken';
 import { User } from 'src/users/schemas/user.schema';
 import { UsersService } from 'src/users/users.service';
 import RefreshToken from './entities/refreshToken.entity';
 import { v4 as uuidv4 } from 'uuid';
+import * as argon2 from 'argon2';
 
 @Injectable()
 export class AuthService {
   constructor(private readonly userService: UsersService) {}
   refreshTokens: RefreshToken[] = [];
 
-  async refresh(refreshStr: string): Promise<string | undefined> {
+  async refresh(refreshStr: string): Promise<string | void> {
     const refreshToken = await this.retrieveRefreshToken(refreshStr);
 
     if (!refreshToken) {
       return undefined;
     }
-    const user = await this.userService.getUserByRefreshToken(refreshToken);
+    const user = await this.userService.getUserByRefreshToken(refreshToken.id);
+    console.log(user);
+
     if (!user) {
       return undefined;
     }
@@ -33,11 +36,7 @@ export class AuthService {
         return undefined;
       }
 
-      return Promise.resolve(
-        this.refreshTokens.find(
-          (token: RefreshToken) => token.id === decoded.id,
-        ),
-      );
+      return this.userService.getRefreshToken(decoded.id);
     } catch (error) {
       console.log('error');
 
@@ -45,19 +44,48 @@ export class AuthService {
     }
   }
 
+  async validatePassword(existingUser: User, password: string): Promise<any> {
+    if (!existingUser) {
+      throw new Error('User does not exist');
+    }
+    const passwordValid = await argon2.verify(existingUser?.password, password);
+    if (existingUser && passwordValid) {
+      return true;
+    }
+    return false;
+  }
+
   async signIn(
     email: string,
     password: string,
     values: { userAgent: string; ipAddress: string },
-  ): Promise<{ accessToken: string; refreshToken: string } | undefined> {
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    user: { username: string; email: string };
+  } | void> {
     const user: User = await this.userService.getUserByEmail(email);
-    if (!user) {
-      return undefined;
+    if (user) {
+      const userValid = await this.validatePassword(user, password);
+      if (userValid) {
+        const refreshAndAccessToken = await this.newRefreshAndAccessToken(
+          user,
+          values,
+        );
+        await this.userService.updateUser(user.userId, {
+          refreshToken: refreshAndAccessToken.refreshTokenObj,
+        });
+        return {
+          refreshToken: refreshAndAccessToken.refreshToken,
+          accessToken: refreshAndAccessToken.accessToken,
+          user: { username: user.username, email: user.email },
+        };
+      } else {
+        throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
+      }
+    } else {
+      throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
-    if (user.password !== password) {
-      return undefined;
-    }
-    return this.newRefreshAndAccessToken(user, values);
   }
 
   async signUp(
@@ -69,13 +97,18 @@ export class AuthService {
     if (user) {
       return undefined;
     }
-    return this.userService.createUser(username, email, password);
+    const hashedPassword = await argon2.hash(password);
+    return this.userService.createUser(username, email, hashedPassword);
   }
 
   private async newRefreshAndAccessToken(
     user: User,
     values: { userAgent: string; ipAddress: string },
-  ): Promise<{ accessToken: string; refreshToken: string }> {
+  ): Promise<{
+    accessToken: string;
+    refreshTokenObj: RefreshToken;
+    refreshToken: string;
+  }> {
     const refreshTokenObj = new RefreshToken({
       id: uuidv4(),
       ...values,
@@ -84,13 +117,14 @@ export class AuthService {
     this.refreshTokens.push(refreshTokenObj);
     return {
       refreshToken: refreshTokenObj.sign(),
+      refreshTokenObj: refreshTokenObj,
       accessToken: sign(
         {
           userId: user.userId,
         },
         process.env.ACCESS_SECRET,
         {
-          expiresIn: '1h',
+          expiresIn: '1s',
         },
       ),
     };

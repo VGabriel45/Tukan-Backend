@@ -18,6 +18,7 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @UseGuards(JwtAuthGuard)
   @Get(':userId')
   async getUser(@Param('userId') userId: string): Promise<User> {
     return this.usersService.getUserById(userId);

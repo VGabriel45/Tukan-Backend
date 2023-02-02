@@ -17,8 +17,16 @@ export class UsersService {
     return this.usersRepository.findOne({ email });
   }
 
-  async getUserByRefreshToken(refreshToken: RefreshToken): Promise<User> {
-    return this.usersRepository.findOne({ refreshToken });
+  async getRefreshToken(refreshTokenId: string): Promise<RefreshToken> {
+    return (
+      await this.usersRepository.findOne({ 'refreshToken.id': refreshTokenId })
+    ).refreshToken;
+  }
+
+  async getUserByRefreshToken(refreshTokenId: string): Promise<User> {
+    return await this.usersRepository.findOne({
+      'refreshToken.id': refreshTokenId,
+    });
   }
 
   async getAllUsers(): Promise<User[]> {
