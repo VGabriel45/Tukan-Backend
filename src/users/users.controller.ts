@@ -24,6 +24,12 @@ export class UsersController {
     return this.usersService.getUserById(userId);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('/checkSession')
+  async checkUserSession(): Promise<boolean> {
+    return true;
+  }
+
   @Get()
   async getUsers(): Promise<User[]> {
     return this.usersService.getAllUsers();

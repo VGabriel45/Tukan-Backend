@@ -1,4 +1,9 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { sign, verify } from 'jsonwebtoken';
 import { User } from 'src/users/schemas/user.schema';
 import { UsersService } from 'src/users/users.service';
@@ -15,18 +20,18 @@ export class AuthService {
     const refreshToken = await this.retrieveRefreshToken(refreshStr);
 
     if (!refreshToken) {
-      return undefined;
+      throw new UnauthorizedException('Invalid Refresh Token');
     }
     const user = await this.userService.getUserByRefreshToken(refreshToken.id);
     console.log(user);
 
     if (!user) {
-      return undefined;
+      throw new UnauthorizedException('Invalid user for refresh token');
     }
     const accessToken = {
       userId: refreshToken.userId,
     };
-    return sign(accessToken, process.env.ACCESS_SECRET, { expiresIn: '1h' });
+    return sign(accessToken, process.env.ACCESS_SECRET, { expiresIn: '1d' });
   }
 
   retrieveRefreshToken(refreshStr: string): Promise<RefreshToken | undefined> {
@@ -38,9 +43,7 @@ export class AuthService {
 
       return this.userService.getRefreshToken(decoded.id);
     } catch (error) {
-      console.log('error');
-
-      return undefined;
+      throw new UnauthorizedException('Refresh Token Expired');
     }
   }
 
@@ -124,7 +127,7 @@ export class AuthService {
         },
         process.env.ACCESS_SECRET,
         {
-          expiresIn: '1s',
+          expiresIn: '1d',
         },
       ),
     };
